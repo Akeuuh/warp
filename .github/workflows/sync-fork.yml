@@ -170,16 +170,16 @@ jobs:
           cargo install cargo-bundle --git=https://github.com/burtonageo/cargo-bundle --rev ae4c76e92c08774bf54ff077b1c52e3d1cd6c16d
 
       - name: Build WarpOss.app
-        run: ./script/run --dont-open
+        run: ./script/run --release --dont-open
 
       - name: Package WarpOss.app
-        run: cd target/debug/bundle/osx && tar -czf WarpOss.app.tar.gz WarpOss.app
+        run: cd target/release/bundle/osx && tar -czf WarpOss.app.tar.gz WarpOss.app
 
       - name: Upload WarpOss.app
         uses: actions/upload-artifact@v4
         with:
           name: WarpOss-${{ github.run_number }}
-          path: target/debug/bundle/osx/WarpOss.app.tar.gz
+          path: target/release/bundle/osx/WarpOss.app.tar.gz
           retention-days: 7
 
       - name: Notify build failure
