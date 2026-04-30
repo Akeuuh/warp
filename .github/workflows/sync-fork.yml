@@ -159,11 +159,25 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install protobuf
-        run: brew install protobuf
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: my-build
 
-      - name: Cargo check
-        run: cargo check
+      - name: Install build deps
+        run: |
+          brew install protobuf
+          cargo install cargo-bundle --git=https://github.com/burtonageo/cargo-bundle --rev ae4c76e92c08774bf54ff077b1c52e3d1cd6c16d
+
+      - name: Build WarpOss.app
+        run: ./script/run --dont-open
+
+      - name: Upload WarpOss.app
+        uses: actions/upload-artifact@v4
+        with:
+          name: WarpOss-${{ github.run_number }}
+          path: target/debug/bundle/osx/WarpOss.app
+          retention-days: 7
 
       - name: Notify build failure
         if: failure()
