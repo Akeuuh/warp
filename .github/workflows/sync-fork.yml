@@ -50,6 +50,7 @@ jobs:
         run: |
           FEATURES=(
             feat/ctrl-tab-mru-tabs
+            aleclercq/feat-pane-deeplink
           )
 
           FAILED=()
@@ -79,6 +80,7 @@ jobs:
         run: |
           FEATURES=(
             feat/ctrl-tab-mru-tabs
+            aleclercq/feat-pane-deeplink
           )
 
           git checkout -B my-build master
