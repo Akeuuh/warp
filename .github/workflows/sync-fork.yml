@@ -1,0 +1,150 @@
+name: Sync Fork
+
+on:
+  schedule:
+    - cron: '0 7 * * *' # 9h Paris
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/warpdotdev/warp.git
+          git fetch upstream
+          git fetch origin
+
+      - name: Check for upstream changes
+        id: check
+        run: |
+          LOCAL=$(git rev-parse master)
+          UPSTREAM=$(git rev-parse upstream/master)
+          if [ "$LOCAL" = "$UPSTREAM" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No upstream changes, skipping"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Upstream has new commits: $LOCAL -> $UPSTREAM"
+          fi
+
+      - name: Sync master
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git checkout master
+          git reset --hard upstream/master
+          git push origin master --force
+
+      - name: Rebase feature branches
+        if: steps.check.outputs.changed == 'true'
+        id: rebase
+        run: |
+          FEATURES=(
+            feat/ctrl-tab-mru-tabs
+          )
+
+          FAILED=()
+          for branch in "${FEATURES[@]}"; do
+            if git rev-parse --verify "origin/$branch" &>/dev/null; then
+              git checkout -B "$branch" "origin/$branch"
+              if git rebase master; then
+                git push origin "$branch" --force-with-lease
+                echo "✓ $branch"
+              else
+                git rebase --abort
+                FAILED+=("$branch")
+                echo "✗ $branch CONFLICT"
+              fi
+            else
+              echo "⊘ $branch not found, skipping"
+            fi
+          done
+
+          if [ ${#FAILED[@]} -gt 0 ]; then
+            echo "failed=${FAILED[*]}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rebuild integration branch
+        if: steps.check.outputs.changed == 'true'
+        id: integration
+        run: |
+          FEATURES=(
+            feat/ctrl-tab-mru-tabs
+          )
+
+          git checkout master
+          git branch -D my-build 2>/dev/null || true
+          git checkout -b my-build
+
+          MERGE_FAILED=()
+          for branch in "${FEATURES[@]}"; do
+            if git rev-parse --verify "$branch" &>/dev/null; then
+              if ! git merge "$branch" --no-edit; then
+                git merge --abort
+                MERGE_FAILED+=("$branch")
+                echo "✗ $branch merge failed"
+              else
+                echo "✓ $branch merged"
+              fi
+            fi
+          done
+
+          git push origin my-build --force
+
+          if [ ${#MERGE_FAILED[@]} -gt 0 ]; then
+            echo "failed=${MERGE_FAILED[*]}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Notify on conflicts
+        if: steps.check.outputs.changed == 'true' && (steps.rebase.outputs.failed || steps.integration.outputs.failed)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const rebaseFailed = '${{ steps.rebase.outputs.failed }}';
+            const mergeFailed = '${{ steps.integration.outputs.failed }}';
+            const title = '⚠️ Fork sync: conflicts detected';
+            const body = [
+              '## Fork Sync Report',
+              '',
+              rebaseFailed ? `**Rebase conflicts:** ${rebaseFailed}` : '',
+              mergeFailed ? `**Merge conflicts:** ${mergeFailed}` : '',
+              '',
+              'Manual resolution needed. Run locally:',
+              '```bash',
+              'git fetch origin && git checkout <branch> && git rebase origin/master',
+              '```'
+            ].filter(Boolean).join('\n');
+
+            // Close previous sync issues
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'fork-sync',
+              state: 'open'
+            });
+            for (const issue of existing.data) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed'
+              });
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['fork-sync']
+            });
