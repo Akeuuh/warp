@@ -149,6 +149,8 @@ jobs:
     needs: sync
     if: needs.sync.result == 'success'
     runs-on: macos-latest
+    permissions:
+      issues: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -156,6 +158,9 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf
+        run: brew install protobuf
 
       - name: Cargo check
         run: cargo check
