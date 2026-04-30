@@ -172,11 +172,14 @@ jobs:
       - name: Build WarpOss.app
         run: ./script/run --dont-open
 
+      - name: Package WarpOss.app
+        run: cd target/debug/bundle/osx && tar -czf WarpOss.app.tar.gz WarpOss.app
+
       - name: Upload WarpOss.app
         uses: actions/upload-artifact@v4
         with:
           name: WarpOss-${{ github.run_number }}
-          path: target/debug/bundle/osx/WarpOss.app
+          path: target/debug/bundle/osx/WarpOss.app.tar.gz
           retention-days: 7
 
       - name: Notify build failure
